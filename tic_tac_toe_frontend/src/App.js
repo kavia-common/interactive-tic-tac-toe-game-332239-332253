@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
 /**
@@ -47,10 +47,26 @@ function App() {
   const winner = winningLine ? squares[winningLine[0]] : null;
   const isDraw = !winner && isBoardFull(squares);
 
+  // When a win is detected we flip this "pulse" token so the win animation
+  // reliably re-triggers (and does not re-trigger on every re-render).
+  const lastWinnerRef = useRef(null);
+  const [winPulse, setWinPulse] = useState(0);
+
   // Effect to apply theme to document element
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  // Trigger win animation once per win (not on every render).
+  useEffect(() => {
+    if (winner && lastWinnerRef.current !== winner) {
+      lastWinnerRef.current = winner;
+      setWinPulse((p) => p + 1);
+    }
+    if (!winner) {
+      lastWinnerRef.current = null;
+    }
+  }, [winner]);
 
   // PUBLIC_INTERFACE
   const toggleTheme = () => {
@@ -74,6 +90,9 @@ function App() {
   const restartGame = () => {
     setSquares(Array(9).fill(null));
     setXIsNext(true);
+    // Reset win pulse so a subsequent win always animates.
+    setWinPulse(0);
+    lastWinnerRef.current = null;
   };
 
   const statusText = useMemo(() => {
@@ -122,15 +141,29 @@ function App() {
                   ? `Cell ${idx + 1}, ${value}`
                   : `Cell ${idx + 1}, empty`;
 
+                const isDisabled = Boolean(winner || isDraw || value);
+                const winningHint = isWinningSquare ? ", part of winning line" : "";
+
                 return (
                   <button
                     key={idx}
                     type="button"
-                    className={`square ${isWinningSquare ? "square--win" : ""}`}
+                    className={[
+                      "square",
+                      isWinningSquare ? "square--win" : "",
+                      isWinningSquare && winner ? "square--winAnim" : "",
+                    ].join(" ")}
+                    // Changing the key on the winning squares forces the element to remount,
+                    // which restarts CSS animations in a predictable way.
+                    // Note: we include winner to avoid remounting on draws.
+                    {...(isWinningSquare && winner
+                      ? { key: `${idx}-win-${winner}-${winPulse}` }
+                      : { key: idx })}
                     onClick={() => handleSquareClick(idx)}
                     role="gridcell"
-                    aria-label={cellLabel}
-                    aria-disabled={Boolean(winner || isDraw || value)}
+                    aria-label={`${cellLabel}${winningHint}`}
+                    aria-disabled={isDisabled}
+                    data-win={isWinningSquare && winner ? "true" : "false"}
                   >
                     <span className={`mark ${value ? "mark--set" : ""}`}>{value ?? ""}</span>
                   </button>
